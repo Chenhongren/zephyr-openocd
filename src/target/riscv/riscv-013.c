@@ -4214,6 +4214,14 @@ static int riscv013_halt_go(struct target *target)
 	if (select_prepped_harts(target, &use_hasel) != ERROR_OK)
 		return ERROR_FAIL;
 
+	uint32_t dmstatus;
+	if (dmstatus_read(target, &dmstatus, true) != ERROR_OK)
+		return ERROR_FAIL;
+
+	LOG_INFO("%s ITE Debug[%d]: before issuing haltreq", __func__, __LINE__);
+	LOG_INFO("  dmstatus =0x%08x", dmstatus);
+
+	LOG_INFO("%s ITE Debug[%d]: Halt hart...", __func__, __LINE__);
 	RISCV_INFO(r);
 	LOG_DEBUG("halting hart %d", r->current_hartid);
 
@@ -4222,22 +4230,38 @@ static int riscv013_halt_go(struct target *target)
 	if (use_hasel)
 		dmcontrol |= DM_DMCONTROL_HASEL;
 	dmcontrol = set_hartsel(dmcontrol, r->current_hartid);
+	LOG_INFO("%s ITE Debug[%d]: write dmcontrol=0x%08x", __func__, __LINE__, dmcontrol);
 	dmi_write(target, DM_DMCONTROL, dmcontrol);
-	for (size_t i = 0; i < 256; ++i)
+	for (size_t i = 0; i < 256; ++i) {
 		if (riscv_is_halted(target))
 			break;
+	}
 
 	if (!riscv_is_halted(target)) {
-		uint32_t dmstatus;
+//		uint32_t dmstatus;
+		uint32_t abstractcs;
 		if (dmstatus_read(target, &dmstatus, true) != ERROR_OK)
 			return ERROR_FAIL;
 		if (dmi_read(target, &dmcontrol, DM_DMCONTROL) != ERROR_OK)
 			return ERROR_FAIL;
+		if (dmi_read(target, &abstractcs, DM_ABSTRACTCS) != ERROR_OK)
+			return ERROR_FAIL;
 
+		LOG_ERROR("%s ITE Debug[%d]:", __func__, __LINE__);
 		LOG_ERROR("unable to halt hart %d", r->current_hartid);
 		LOG_ERROR("  dmcontrol=0x%08x", dmcontrol);
 		LOG_ERROR("  dmstatus =0x%08x", dmstatus);
+		LOG_ERROR("  abstractcs =0x%08x", abstractcs);
 		return ERROR_FAIL;
+	}
+	else {
+		if (dmi_read(target, &dmcontrol, DM_DMCONTROL) != ERROR_OK)
+			return ERROR_FAIL;
+		if (dmstatus_read(target, &dmstatus, true) != ERROR_OK)
+			return ERROR_FAIL;
+		LOG_INFO("%s ITE Debug[%d]: target is halted", __func__, __LINE__);
+		LOG_INFO("  dmcontrol=0x%08x", dmcontrol);
+		LOG_INFO("  dmstatus =0x%08x", dmstatus);
 	}
 
 	dmcontrol = set_field(dmcontrol, DM_DMCONTROL_HALTREQ, 0);
@@ -4314,6 +4338,7 @@ static bool riscv013_is_halted(struct target *target)
 			dmcontrol |= DM_DMCONTROL_HALTREQ;
 		dmi_write(target, DM_DMCONTROL, dmcontrol);
 	}
+
 	return get_field(dmstatus, DM_DMSTATUS_ALLHALTED);
 }
 
